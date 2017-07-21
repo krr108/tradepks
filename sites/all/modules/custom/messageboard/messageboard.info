@@ -1,0 +1,5 @@
+name = Message Board
+description = This module is for Message Board in tradepks application.
+package = Tradepks
+core = 7.x
+version = 7.x-1.0
