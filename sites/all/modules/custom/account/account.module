@@ -1,0 +1,377 @@
+<?php
+/**
+ * Hook Menu
+ */ 
+ function account_menu(){
+    $items = array();
+    $items['signup'] = array(
+        'description' => 'User Sign Up page',
+        'page callback' => 'user_signup',
+        'page arguments' => array(),
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['reset_password']         = array(
+        'description' => 'Update password',
+        'page callback' => 'user_update_password',
+        'page arguments' => array(),
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['forgot_password']         = array(
+        'description' => 'Forgot password',
+        'page callback' => 'user_forgot_password',
+        'page arguments' => array(),
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    return $items;
+}
+
+
+/**
+ * General sign up form
+ */
+function user_signup(){
+    $data = array();
+    return theme('signup', array(
+        'result' => $data
+    ));
+}
+
+
+/**
+ * Hook Theme
+ */
+function account_theme($existing, $type, $theme, $path){
+    return array(
+        'signup' => array(
+            'variables' => array(
+                'program' => NULL
+            ),
+            'template' => 'user_signup',
+            'path' => drupal_get_path('theme', 'tradepks_google') . '/templates'
+        )
+    );
+    return $items;
+}
+
+
+//Define registration form
+function get_registration_form($form){
+
+    $form['field_first_name'] = array(
+		'#title' => 'First Name',		
+		'#type' => 'textfield',
+		'#attributes' => array('placeholder' => 'FIRST NAME', 'class' => array('form-control')),
+		'#required' => TRUE
+    );
+	$form['field_last_name'] = array( 
+		'#title' => 'Last Name',			
+        '#type' => 'textfield',	
+		'#attributes' => array('placeholder' => 'LAST NAME', 'class' => array('form-control')),
+        '#required' => TRUE		
+    ); 
+   
+    $form['field_email'] = array(
+		'#title' => 'Email Id <span id="edit-mail-hint">(This will be your username)</span>',	
+		'#attributes' => array('placeholder' => 'EMAIL', 'class' => array('form-control')),		
+		'#type' => 'textfield',
+		'#required' => TRUE		
+    ); 
+   $form['submit'] = array(
+   '#type' => 'submit',
+   '#value' => t('REGISTER'),
+           '#attributes' => array('class' => array('btn', 'btn-register'))
+    );	
+	
+    return $form;
+}
+
+//registration form submit
+function get_registration_form_submit($form, &$form_state){
+
+	
+	$firstname = $form_state['values']['field_first_name'];
+	$lastname =  $form_state['values']['field_last_name'];
+	$email = $form_state['values']['field_email'];
+	
+	if(!db_select('users', 'u')->condition('mail', $email, '=')->fields('u')->execute()->rowCount()){
+		$password=user_password(6);
+		$content = file_get_contents(DRUPAL_ROOT.'/sites/all/libraries/sendgrid-php/template/signup.html');
+		
+		$replace = array( '{{user}}' => $firstname, '{{password}}' => $password, '{{username}}' => $email); 
+		$filtered = strReplaceAssoc($replace,$content);
+		$subject = "Welcome to Tradepks";
+		$mailvalue = array("subject"=>$subject,"content"=>$filtered,"mailto"=>$email);
+		
+		
+		$new = array(
+			'name' => $email,
+			'pass' => $password,		
+			'mail' => $email,
+			'init' => $email,
+			'status' => 1,
+			'access' => REQUEST_TIME,
+			'roles' => array(
+				5 => 'business user',
+			)
+		);
+		
+		$user = user_save('', $new);
+		
+		if(!$user) {
+			 drupal_set_message(t('Error in creating account.'), 'error');
+		}else{			
+			$account_fields = array(
+					'uid' => $user->uid,
+					'first_name' => $firstname,
+					'last_name' => $lastname,
+					'email_id' => $user->mail,
+					'first_login' =>1
+			);
+			$account_id = db_insert('trade_account')->fields($account_fields)->execute();
+
+
+			require_once(DRUPAL_ROOT.'/sites/all/libraries/sendmail.php');
+			$sendmail = sendmail($mailvalue);
+			drupal_set_message(t('You have been successfully register, please check your mail for Password'), 'status');		
+			drupal_goto('');	
+					
+		}
+		
+	}else{
+		drupal_set_message(t('User with same email Id is already registered'), 'error');		
+		drupal_goto('');			
+	}
+}
+
+
+/**
+ *	Custom function get page title from application
+ */
+function get_page_title()
+{
+	$current_URI_append = $_SERVER['REQUEST_URI'];
+	$exp  = explode('/', $current_URI_append);
+	$unique_id   = end($exp);
+	
+	return $unique_id;
+}
+//for replacing data
+function strReplaceAssoc(array $replace, $subject) { 
+   return str_replace(array_keys($replace), array_values($replace), $subject);    
+}
+
+/**
+ *	hook user login
+ */
+function account_user_login(&$edit, $account){
+    global $user, $GLOBALS;
+    if (isset($user->uid) && $user->uid > 0) {
+        if ($user->uid == 1) {
+			drupal_set_message(t('Welcome admin'), 'success');
+			$destination='notification_list';
+        } elseif(checkFirstLogin($user)) {
+			drupal_set_message(t('Your Password needs to be changed. Please change the password to make account secure'), 'warning');
+			$destination='changepassword';
+		}else if(isset($_SESSION["notification_id"]) && $_SESSION["notification_id"] != ""){
+			$destination='read_notification/'.$_SESSION["notification_id"];
+			$_SESSION["notification_id"] = "";
+		}else{
+           $destination='notification_list';
+        }
+    }
+	$GLOBALS['destination'] = $destination;	
+
+}
+
+/**
+ *	hook user Insert
+ */
+function account_user_insert(&$edit, $account, $category){
+    global $user;
+	$firstname = 'John';
+	$lastname = 'Deo';
+	
+	if(isset($account->roles[3]) && $account->roles[3]){
+		$firstname = 'Site';
+		$lastname = 'Admin';
+	}else if(isset($account->roles[4]) && $account->roles[4]){
+		$firstname = 'Business';
+		$lastname = 'Analyst';
+	}else if(isset($account->roles[5]) && $account->roles[5]){
+		$firstname = 'Business';
+		$lastname = 'User';
+	}else if(isset($account->roles[6]) && $account->roles[6]){
+		$firstname = 'Trade';
+		$lastname = 'Admin';
+	}
+	
+    if (isset($user->roles[3])) {
+        /**to insert state leader and approval manager details in mwm_account*/
+        if (isset($account->roles[3]) || isset($account->roles[4]) || isset($account->roles[5]) || isset($account->roles[6])) {
+            $account_fields = array(
+                'uid' => $account->uid,
+				'first_name' => $firstname,
+				'last_name' => $lastname,
+				'email_id' => $account->mail,
+				'first_login' =>1
+            );
+            $account_id  = db_insert('trade_account')->fields($account_fields)->execute();
+        }
+    }
+}
+
+/**
+ * Implements hook_drupal_goto_alter
+ */
+function account_drupal_goto_alter(&$path, &$options, &$http_response_code) {
+
+  if (isset($GLOBALS['destination'])) {
+    $destination = $GLOBALS['destination'];
+
+    if (is_array($destination)) {
+      $path = $destination[0];
+      $options = array();
+      if (count($destination) > 1) {
+        $options = $destination[1];
+      }
+    }
+    else {
+      $path = $destination;
+    }
+  }
+} 
+
+/**
+ * Custom function to get account details
+ */
+function get_account_details($uid){
+    $logeduser = user_load($uid);
+	$account = new StdClass();
+	if($uid == 1 || isset($logeduser->roles[3])) {
+		$account->account_id = $uid;
+		$account->uid = $uid;
+		$account->first_name = "Site";
+		$account->last_name = "Admin";
+		$account->email_id = $logeduser->mail;
+	}else{		
+		$query = db_select('trade_account', 'a');
+		$query->fields('a', array('uid', 'account_id', 'first_name', 'last_name', 'email_id'));
+		$query->condition('a.uid', $uid,'=');	
+		$account = $query->execute()->fetchObject();
+	}
+	return $account;
+}
+
+
+/**
+ *	Custom function Change password
+ */
+function user_update_password() {
+	$loggedin_user = $GLOBALS['user'];
+	if(!$loggedin_user->uid) {
+		drupal_set_message(t('Please login to change your password'), 'error');
+		drupal_goto('');
+	}
+	$loggedin_user_id = $loggedin_user->uid;
+	$user = user_load($loggedin_user_id);
+	$newPassword = $_POST['new_password'];
+	$confrmPassword = $_POST['confirm_password'];
+	if(check_submit()) {
+		if($newPassword == $confrmPassword) {
+			$user->pass = $newPassword;
+			$user_update_password_txn = db_transaction();
+			try {
+				require_once DRUPAL_ROOT . '/' . variable_get('password_inc', 'includes/password.inc');
+				$password = user_hash_password($newPassword);
+				db_update('users')->fields(array('pass' => $password))->condition('uid', $loggedin_user->uid, '=')->execute();
+				db_update('trade_account')->fields(array('first_login' => 0))->condition('uid', $loggedin_user->uid, '=')->execute();
+			} catch (Exception $e) {
+				$user_update_password_txn->rollback();
+			}
+			drupal_set_message('Your password is updated successfully');
+			drupal_goto('');
+		} else {
+			drupal_set_message(t('Your new password and confirm password should be same'), 'error');
+			drupal_goto('changepassword');
+		}
+	} else {
+		drupal_set_message('The requested method is not POST');
+		drupal_goto('changepassword');
+	}
+}
+
+/**
+ *	Custom function forgot password
+ */
+function user_forgot_password() {
+	if(user_is_logged_in()) {
+		drupal_set_message(t('You are already login to our system'), 'error');
+		drupal_goto('changepassword');
+	}
+	
+	if(check_submit()) {
+		$register_mail = $_POST['register_mail'];	
+		$valid_user = db_select('users', 'u')->condition('mail', $register_mail, '=')->fields('u')->execute()->fetchObject();
+		$newPassword ="";
+		$update_status;
+		if($valid_user){
+			$newPassword=user_password(6);
+			$user_update_password_txn = db_transaction();
+			try {
+				require_once DRUPAL_ROOT . '/' . variable_get('password_inc', 'includes/password.inc');
+				$password = user_hash_password($newPassword);
+				$update_status = db_update('users')->fields(array('pass' => $password))->condition('uid', $valid_user->uid, '=')->execute();
+				db_update('trade_account')->fields(array('first_login' => 1))->condition('uid', $valid_user->uid, '=')->execute();
+			} catch (Exception $e) {
+				$user_update_password_txn->rollback();
+			}	
+		}else{
+			drupal_set_message(t('The email id you have entered its not registered in our application'), "error");
+			drupal_goto('forgotpassword');		
+		}
+		
+		if(isset($update_status)&& $update_status){
+			$account = get_account_details($valid_user->uid);
+			$content = file_get_contents(DRUPAL_ROOT.'/sites/all/libraries/sendgrid-php/template/signup.html');		
+			$replace = array( '{{user}}' => $account->first_name, '{{password}}' => $newPassword, '{{username}}' => $register_mail); 
+			$filtered = strReplaceAssoc($replace,$content);
+			$subject = "Tradepks: Account updated password";
+			$mailvalue = array("subject"=>$subject,"content"=>$filtered,"mailto"=>$register_mail);
+			
+			require_once(DRUPAL_ROOT.'/sites/all/libraries/sendmail.php');
+			$sendmail = sendmail($mailvalue);
+			
+			drupal_set_message(t("New password has been sent to your registered email id: ".$register_mail), "status");	
+			drupal_goto('');	
+		}else{
+			drupal_set_message(t('Something went wrong'), 'error');
+			drupal_goto('forgotpassword');			
+		}
+	
+	}else {
+		drupal_set_message('The requested method is not POST');
+		drupal_goto('forgotpassword');
+	}	
+}
+
+//check user first login or reset password
+function checkFirstLogin($input){	
+	$uid = $input->uid; 
+	$status = db_select('trade_account', 'a')
+		->fields('a')
+		->condition('uid', $uid,'=')
+		->execute()
+		->fetchAssoc();
+	if($status['first_login'] == 1){
+		return true;	
+	}else{
+		return false;
+	}
+}
+//check submit
+function check_submit() {
+  return $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST);
+}
