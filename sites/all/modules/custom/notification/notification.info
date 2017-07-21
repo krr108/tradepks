@@ -1,0 +1,5 @@
+name = Notification
+description = This module is for user Notification functionality for tradepks application.
+package = Tradepks
+core = 7.x
+version = 7.x-1.0
