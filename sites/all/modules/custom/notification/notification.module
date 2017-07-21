@@ -1,0 +1,345 @@
+<?php
+/**
+ * Hook Menu
+ */ 
+ function notification_menu(){
+    $items = array();
+    $items['notification_create'] = array(
+        'description' => 'This is for create Notification',
+        'page callback' => 'notification_create',
+        'page arguments' => array(),
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['notification_list'] = array(
+        'description' => 'This is for Notification list',
+        'page callback' => 'get_notification_list',
+        'page arguments' => array(),
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['read_notification/%'] = array(
+        'description' => 'This is for view Notification',
+		'page callback' => 'view_notification_delails',
+		'page arguments' => array(1),
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['notification_favourite_operation'] = array(
+        'description' => 'This is for favourite operation of Notification',
+		'page callback' => 'notification_favourite_operation',
+		'page arguments' => array(),
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['notification_operation'] = array(
+        'description' => 'This is for operation of Notification',
+		'page callback' => 'notification_operation',
+		'page arguments' => array(),
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['notification_archive_list'] = array(
+        'description' => 'This is for archive operation of Notification',
+		'page callback' => 'get_notification_archive_list',
+		'page arguments' => array(),
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['notification_delete_list'] = array(
+        'description' => 'This is for archive operation of Notification',
+		'page callback' => 'get_notification_delete_list',
+		'page arguments' => array(),
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    return $items;
+}
+
+/**
+ * Hook Theme
+ */
+function notification_theme($existing, $type, $theme, $path){
+    return array(
+        'notification_list' => array(
+            'variables' => array(
+                'notificationList' => NULL
+            ),
+            'template' => 'notification_list',
+            'path' => drupal_get_path('theme', 'tradepks_google') . '/templates'
+        ),
+        'read_notification' => array(
+            'variables' => array(
+                'notificationDetails' => NULL
+            ),
+            'template' => 'read_notification',
+            'path' => drupal_get_path('theme', 'tradepks_google') . '/templates'
+        )
+    );
+}
+
+/**
+ *	Custom function Create Notification for Business User
+ */
+ function get_notification_list(){
+	global $user;
+	$notificationList="";
+	$notification_ids=array();
+	
+	$archive_query = db_select('tbl_notification_operations', 't');
+	$archive_query->fields('t', array('notification_id'));
+	$archive_query->condition('t.uid', $user->uid,'=');
+	$archive_array= $archive_query->execute()->fetchAll();
+	
+	foreach($archive_array as $obj){
+		$notification_ids[] = $obj->notification_id;
+	}
+	
+	//get data from database
+	$query = db_select('tbl_notification', 'h');	
+    $query->fields('h', array('notification_id','Created_by','notification_title','notification_favourite','created'));
+	$query->orderBy('h.created', 'DESC');	
+	if(count($notification_ids) > 0) $query->condition('h.notification_id', $notification_ids,'NOT IN');
+	if(isset($user->roles[4])) $query->condition('Created_by', $user->uid,'=');
+	$notificationList = $query->execute()->fetchAll();
+	
+	
+	//Sending data to theme
+ 	return theme('notification_list', array(
+        'notificationList' => $notificationList
+    ));
+ }
+
+/**
+ *	Custom function get archive Notifications for All User
+ */
+ function get_notification_archive_list(){
+	global $user;
+	$notificationList="";
+	//get data from database
+	$query = db_select('tbl_notification', 't');		
+	$query->LeftJoin('tbl_notification_operations', 'o', 't.notification_id = o.notification_id');
+    $query->fields('t', array('notification_id','Created_by','notification_title','notification_favourite','created'));
+    $query->fields('o', array('status_type'));
+	$query->orderBy('t.created', 'DESC');
+	$query->condition('o.uid', $user->uid,'=');
+	$query->condition('o.status_type', "archive",'=');
+	$notificationList = $query->execute()->fetchAll();
+	
+	
+	//Sending data to theme
+ 	return theme('notification_list', array(
+        'notificationList' => $notificationList
+    ));
+ }
+
+/**
+ *	Custom function get Delete Notifications for All User
+ */
+ function get_notification_delete_list(){
+	global $user;
+	$notificationList="";
+	//get data from database
+	$query = db_select('tbl_notification', 't');		
+	$query->LeftJoin('tbl_notification_operations', 'o', 't.notification_id = o.notification_id');
+    $query->fields('t', array('notification_id','Created_by','notification_title','notification_favourite','created'));
+    $query->fields('o', array('status_type'));
+	$query->orderBy('t.created', 'DESC');
+	$query->condition('o.uid', $user->uid,'=');
+	$query->condition('o.status_type', "delete",'=');
+	$notificationList = $query->execute()->fetchAll();
+	
+	
+	//Sending data to theme
+ 	return theme('notification_list', array(
+        'notificationList' => $notificationList
+    ));
+ }
+
+/**
+ *	Custom function View Notification details for all User
+ */
+ function view_notification_delails($notification_id){
+	global $user;
+	$notificationList="";
+	//get data from database
+	$query = db_select('tbl_notification', 'h');	
+    $query->fields('h');
+	$query->orderBy('h.created', 'DESC');
+	$query->condition('notification_id', $notification_id,'=');
+	$notificationDetails = $query->execute()->fetchObject();
+	
+	
+	//Sending data to theme
+ 	return theme('read_notification', array(
+        'notificationDetails' => $notificationDetails
+    ));
+ }
+
+ 
+ 
+/**
+ *	Custom function Create Notification for Business User
+ */ 
+ function notification_create(){	 
+	global $user, $base_url;
+	
+	$notificationTitle = $_POST['notification_title'];
+	$notificationBody = $_POST['notification_body'];
+	if(check_submit()) {		
+        if (isset($user->roles[3]) || isset($user->roles[4]) || isset($user->roles[6])) {
+            $notification_fields = array(
+                'Created_by' => $user->uid,
+				'notification_title' => $notificationTitle,
+				'notification_subject' => $notificationBody,
+				'notification_favourite' => '[]'
+            );
+			$notification_id  = db_insert('tbl_notification')->fields($notification_fields)->execute();
+			
+			// Start the session
+			//session_start();
+			// Set session variables
+			//$_SESSION["notification_id"] = $notification_id;
+			
+			if(isset($notification_id)){				
+				$content = file_get_contents(DRUPAL_ROOT.'/sites/all/libraries/sendgrid-php/template/createNotification.html');	
+				$url = $base_url.'/read_notification/'.$notification_id;
+				$replace = array( '{{title}}' => $notificationTitle, '{{body}}' => $notificationBody, '{{url}}'=> $url); 
+				$filtered = strReplaceAssoc($replace,$content);
+				$subject = "Tradepks: ".$notificationTitle ;
+				$email = getBusinessUserMail();
+				$mailvalue = array("subject"=>$subject,"content"=>$filtered,"mailto"=>$email);
+				
+				require_once(DRUPAL_ROOT.'/sites/all/libraries/sendmail.php');
+				$sendmail = sendmailMultiple($mailvalue);
+				
+				drupal_set_message('Notification has been created success fully');
+				drupal_goto('read_notification/'.$notification_id);
+			}else{
+				drupal_set_message(t('Some thing went wrong while creating notification'), 'error');
+				drupal_goto('create_notification');				
+			}
+		}
+	}
+	 
+ } 
+ 
+ 
+/**
+ *	Custom function of Notification fovourite operation
+ */
+ function notification_favourite_operation(){
+	global $user;
+	$notificationId = $_POST['notification_id'];
+	if(isset($_POST['notification_id']) && $_POST['favourit_type'] != "false") {
+		//add favourite		
+		$query =db_query("UPDATE `tbl_notification` SET notification_favourite=JSON_ARRAY_APPEND(notification_favourite, '$', :uid) WHERE `notification_id`= :notification_id", array(':notification_id' => $_POST['notification_id'], ':uid' => $user->uid));	
+		//setting output
+		if(isset($query)){
+			$result = array('status' => 'success', 'message' => 'Notification Marked as Favourite');
+		}else{
+			$result = array('status' => 'success', 'message' => 'something went wrong');
+		}
+	}else{		
+		//remove favourite		
+		$query = db_select('tbl_notification', 'h');	
+		$query->fields('h', array('notification_favourite'));
+		$query->condition('notification_id', $notificationId,'=');
+		$notificationObj = $query->execute()->fetchObject();
+		//remove uid from array
+		$fab_obj = json_decode($notificationObj->notification_favourite);
+		$fab_obj = array_diff($fab_obj, array($user->uid));
+		$fab_array ="";
+		if(count($fab_obj)>0){			
+			$fab_array ="[";
+			foreach($fab_obj as $fab){
+				$fab_array = $fab_array.'"'.$fab.'",';
+			}		
+			$fab_array =substr($fab_array, 0, -1)."]";			
+		}else{
+			$fab_array ="[]";
+		}
+		//Updating new array to notification_favourite		
+		$update = array();
+		$update['notification_favourite'] = $fab_array;
+		$query = db_update('tbl_notification')->fields($update)->condition('notification_id', $notificationId,'=')->execute();
+		//setting output
+		if(isset($query)){
+			$result = array('status' => 'success', 'message' => 'Notification romoved from Favourite');
+		}else{
+			$result = array('status' => 'success', 'message' => 'something went wrong');
+		}
+	}
+	
+	drupal_json_output($result);
+ } 
+ 
+ 
+ 
+ 
+/**
+ *	Custom function of Notification Archive and Delete operation
+ */
+ function notification_operation(){	  
+	global $user;
+	$status_type = $_POST['status_type'];
+	$notification_list = json_decode($_POST['notification_list']);
+	foreach($notification_list as $notification_id){
+		$notification_archive = array(
+			'notification_id' => $notification_id,
+			'uid' => $user->uid,
+			'status_type' => $status_type
+		);
+		$archive_id  = db_insert(' tbl_notification_operations')->fields($notification_archive)->execute();		
+	}
+	if($status_type == "Delete"){
+		$result = array('status' => 'success', 'message' => 'Notifications Deleted successfully');		
+	}else{			
+		$result = array('status' => 'success', 'message' => 'Notifications Archived successfully');
+	}
+	drupal_json_output($result);
+ } 
+ 
+ 
+  
+/**
+ *	Custom function get Notification flag for All User
+ */
+ function get_notification_flag($notification_favourite_array){
+	global $user;	 
+	$fab_flag = false;
+	$favourite_uids = json_decode($notification_favourite_array, true);
+	if(count($favourite_uids) > 0){
+		foreach($favourite_uids as $fab_uid){
+			if($fab_uid == $user->uid){                
+				$fab_flag = true;
+			}
+		}
+	}else{                                            
+	   $fab_flag = false;
+	}
+	
+	return $fab_flag;
+ }
+ 
+ function getBusinessUserMail(){
+		$user_list = array();
+		$roles = array('business user');
+		$query = db_select('users_roles', 'ur');
+		$query->join('users', 'u', 'u.uid = ur.uid');
+		$query->join('role', 'r', 'r.rid = ur.rid');
+		$query->fields('u',array('mail'));
+
+		$query->condition('r.name', $roles, 'IN');
+		$result = $query->execute();
+
+		if($result){
+			$mail_count = true;
+			foreach($result as $row ) {
+				$user_list[]=$row->mail;
+			}
+		}
+
+		return $user_list;	 
+ }
+
